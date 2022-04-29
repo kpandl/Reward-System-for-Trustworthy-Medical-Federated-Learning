@@ -1,0 +1,17 @@
+{
+  "device_name": "bwforcluster",
+  "path_to_train_csv_chexpert": "/gpfs/bwfor/work/ws/ka_an7651-data/chexpert-orig-resized/CheXpert-v1.0/train.csv",
+  "path_to_data_images_chexpert": "/../../../../../work/ws/ka_an7651-data/chexpert-orig-resized/",
+  "path_to_data_images_chexpert_absolute": "/gpfs/bwfor/work/ws/ka_an7651-data/chexpert-orig-resized/",
+  
+  "path_to_metadata_csv_mimic": "/gpfs/bwfor/work/ws/ka_an7651-data/mimic-resized/mimic-cxr-2.0.0-metadata.csv",
+  "path_to_chexpertlabels_csv_mimic": "/gpfs/bwfor/work/ws/ka_an7651-data/mimic-resized/mimic-cxr-2.0.0-chexpert.csv",
+  "path_to_patientdetails_csv_mimic": "/gpfs/bwfor/work/ws/ka_an7651-data/mimic-resized/admissions.csv",
+  "path_to_patientages_csv_mimic": "/gpfs/bwfor/work/ws/ka_an7651-data/mimic-resized/patients.csv",
+  "path_to_data_images_mimic": "/../../../../../work/ws/ka_an7651-data/mimic-resized/raw/physionet.org/files/mimic-cxr-jpg/2.0.0/files/",
+  "path_to_data_images_mimic_absolute": "/gpfs/bwfor/work/ws/ka_an7651-data/mimic-resized/raw/physionet.org/files/mimic-cxr-jpg/2.0.0/files/",
+
+  "path_to_data_entry_nih": "/gpfs/bwfor/work/ws/ka_an7651-data/nih-resized/Data_Entry_2017_v2020.csv",
+  "path_to_data_images_nih": "/../../../../../work/ws/ka_an7651-data/nih-resized/images",
+  "path_to_data_images_nih_absolute": "/gpfs/bwfor/work/ws/ka_an7651-data/nih-resized/images"
+}
