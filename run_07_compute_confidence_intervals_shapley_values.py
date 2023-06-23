@@ -51,6 +51,7 @@ for mode in ["Performance", "Bias"]:
             path_hs = os.path.join(os.getcwd(), "results", "plot_documents"+final_path_list[i], "Shapley_fairness_hs.csv")
         
         with open(path_means_and_hs, 'a', newline="") as logfile, open(path_means, 'a', newline="") as logfile_means, open(path_hs, 'a', newline="") as logfile_half_spans:
+            print(path_means_and_hs)
             logwriter = csv.writer(logfile, delimiter=',')
             logwriter_means = csv.writer(logfile_means, delimiter=',')
             logwriter_half_spans = csv.writer(logfile_half_spans, delimiter=',')
@@ -59,6 +60,11 @@ for mode in ["Performance", "Bias"]:
             logwriter.writerow([final_path_list[i]])
             logwriter_means.writerow(column_names)
             logwriter_half_spans.writerow(column_names)
+
+            for i, df in enumerate(df_list):
+                df = df[df["testing critereon"] == "AUC"]
+                df = df.reset_index(drop=True)
+                df_list[i] = df
 
             for row in df_list[0].iterrows():
                 this_row = row[1]

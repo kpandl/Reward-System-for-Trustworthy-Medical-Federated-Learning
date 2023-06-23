@@ -34,22 +34,25 @@ print("succesfully tested GPUs")
 
 parser=argparse.ArgumentParser()
 
-parser.add_argument('--seed', nargs='?', default=0, type=int, help='Specify the random seed')
-parser.add_argument('--start_environment', nargs='?', default=0, type=int, help='Specify the start federated learning environment')
-parser.add_argument('--end_environment', nargs='?', default=1, type=int, help='Specify the end federated learning environment')
-parser.add_argument('--maximum_translation', nargs='?', default=0, type=float, help='Set maximum translation')
+parser.add_argument('--seed', nargs='?', default=100, type=int, help='Specify the random seed')
+parser.add_argument('--start_environment', nargs='?', default=62, type=int, help='Specify the start federated learning environment')
+parser.add_argument('--end_environment', nargs='?', default=63, type=int, help='Specify the end federated learning environment')
+parser.add_argument('--maximum_translation', nargs='?', default=0.1, type=float, help='Set maximum translation')
 parser.add_argument('--gender_filter', nargs='?', default="none", type=str, help='Set gender filter')
-parser.add_argument('--folder_name_extension', nargs='?', default="", type=str, help='Set folder name extension')
+parser.add_argument('--folder_name_extension', nargs='?', default="final_age_quantile_50_50", type=str, help='Set folder name extension')
 parser.add_argument('--gendersetting', nargs='?', default=0, type=int, help='Specify the gender setting')
 parser.add_argument('--traindatasetsizelimit', nargs='?', default=-1, type=int, help='Specify the train dataset size limit')
 parser.add_argument('--differentialprivacy', nargs='?', default=0, type=int, help='Specify the settings for differential privacy')
-parser.add_argument('--dscmode', nargs='?', default=28, type=int, help='Specify the dataset collection mode')
+parser.add_argument('--dscmode', nargs='?', default=14, type=int, help='Specify the dataset collection mode')
 parser.add_argument('--use_specific_gpu', nargs='?', default=-1, type=int, help='Specify the dataset collection mode')
 
 parser.add_argument('--non_weighted_aggregation', dest='weighted_aggregation', action='store_true')
 parser.add_argument('--weighted_aggregation', dest='weighted_aggregation', action='store_false')
 parser.set_defaults(weighted_aggregation=False)
 parser.set_defaults(gendersetting1=True)
+
+parser.add_argument('--label_flip_experiment', dest='label_flip_experiment', action='store_true')
+parser.set_defaults(label_flip_experiment=False)
 
 parser.add_argument('--combine_weighted_and_unweighted_aggregation', dest='combine_weighted_and_unweighted_aggregation', action='store_true')
 parser.set_defaults(combine_weighted_and_unweighted_aggregation=True)
@@ -95,6 +98,8 @@ if(args.differentialprivacy > 0):
 
 
 dsc = DataSetCollection(args.seed, ds_list, 0, 0.8, 0.8, 0.9, 0.9, 1, maximum_translation=args.maximum_translation, mode=args.dscmode, use_specific_gpu=args.use_specific_gpu)
+if(args.label_flip_experiment):
+    dsc.flip_labels([0, 2, 4], 0.1)
 if(config["device_name"] == "bwunicluster" or config["device_name"] == "bwforcluster"):
     print("bwcluster, so copying files to local")
     dsc.copy_files_to_local(["train", "val"])

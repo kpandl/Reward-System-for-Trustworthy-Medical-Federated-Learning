@@ -94,8 +94,8 @@ plot_shapley_value_chart(axes.flat[5], "_reduced_maxtranslation_0.1final_age_qua
 plot_shapley_value_chart(axes.flat[3], "_reduced_maxtranslation_0.1final_age_quantile_50_50", title=None)
 plot_shapley_value_chart(axes.flat[1], "_reduced_maxtranslation_0.1final_age_as_is", title="Age-based splits")
 
-plot_shapley_value_chart(axes.flat[6], "_reduced_maxtranslation_0.1final_100_0", title=None, label_positions=[1, 1, -1, 1, 1, 1, 1])
-plot_shapley_value_chart(axes.flat[4], "_reduced_maxtranslation_0.1final_75_25", title=None, label_positions=[1, -1, 1, 1, 1, 1, 1])
+plot_shapley_value_chart(axes.flat[6], "_reduced_maxtranslation_0.1final_100_0", title=None, label_positions=[1, 1, 1, 1, 1, 1, 1])
+plot_shapley_value_chart(axes.flat[4], "_reduced_maxtranslation_0.1final_75_25", title=None, label_positions=[1, 1, 1, 1, 1, 1, 1])
 plot_shapley_value_chart(axes.flat[2], "_reduced_maxtranslation_0.1final_50_50", title=None)
 plot_shapley_value_chart(axes.flat[0], "_reduced_maxtranslation_0.1final_as_is", title="Sex-based splits")
 

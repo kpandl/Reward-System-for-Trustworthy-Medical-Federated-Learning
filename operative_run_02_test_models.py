@@ -33,16 +33,19 @@ a = a.to(device)
 print("succesfully tested GPUs")
 
 parser=argparse.ArgumentParser()
-parser.add_argument('--seed', nargs='?', default=0, type=int, help='Specify the random seed')
-parser.add_argument('--start_environment', nargs='?', default=0, type=int, help='Specify the start federated learning environment')
-parser.add_argument('--end_environment', nargs='?', default=12, type=int, help='Specify the end federated learning environment')
-parser.add_argument('--name_of_test_folder', nargs='?', default="default0_with_translation", type=str, help='Specify the name of the test folder')
-parser.add_argument('--dscmode', nargs='?', default=1, type=int, help='Specify the dataset collection mode')
+parser.add_argument('--seed', nargs='?', default=100, type=int, help='Specify the random seed')
+parser.add_argument('--start_environment', nargs='?', default=62, type=int, help='Specify the start federated learning environment')
+parser.add_argument('--end_environment', nargs='?', default=63, type=int, help='Specify the end federated learning environment')
+parser.add_argument('--name_of_test_folder', nargs='?', default="default100_reduced_maxtranslation_0.1_sex_100_0", type=str, help='Specify the name of the test folder')
+parser.add_argument('--dscmode', nargs='?', default=6, type=int, help='Specify the dataset collection mode')
 parser.add_argument('--use_specific_gpu', nargs='?', default=-1, type=int, help='Specify the dataset collection mode')
 
 parser.add_argument('--non_weighted_aggregation', dest='weighted_aggregation', action='store_true')
 parser.add_argument('--weighted_aggregation', dest='weighted_aggregation', action='store_false')
 parser.set_defaults(weighted_aggregation=False)
+
+parser.add_argument('--label_flip_experiment', dest='label_flip_experiment', action='store_true')
+parser.set_defaults(label_flip_experiment=False)
 
 parser.add_argument('--combine_weighted_and_unweighted_aggregation', dest='combine_weighted_and_unweighted_aggregation', action='store_true')
 parser.set_defaults(combine_weighted_and_unweighted_aggregation=True)
@@ -73,6 +76,8 @@ if(config["device_name"] == "bwforcluster"):
             scan.learning_path = os.path.join(os.environ['TMPDIR'], scan.learning_path)
 
 dsc = DataSetCollection(args.seed, ds_list, 0, 0.8, 0.8, 0.9, 0.9, 1, mode=args.dscmode, use_specific_gpu=args.use_specific_gpu)
+if(args.label_flip_experiment):
+    dsc.flip_labels([0, 2, 4], 0.1)
 with open('config.json') as config_file:
     config = json.load(config_file)
 if(config["device_name"] == "bwunicluster" or config["device_name"] == "bwforcluster"):

@@ -36,6 +36,7 @@ for mode in ["Performance", "Bias", "Bias_Age"]:
             if(mode == "Bias"):
                 path = os.path.join(os.getcwd(), "results", "default"+str(seed)+final_path_list[i], "Shapley.csv")
                 path_with_coalition = os.path.join(os.getcwd(), "results", "default"+str(seed)+final_path_list[i], "Shapley_with_coalition.csv")
+
             if(mode == "Bias_Age"):
                 path = os.path.join(os.getcwd(), "results", "default"+str(seed)+final_path_list[i], "Shapley_age.csv")
                 path_with_coalition = os.path.join(os.getcwd(), "results", "default"+str(seed)+final_path_list[i], "Shapley_age_with_coalition.csv")

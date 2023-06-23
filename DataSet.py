@@ -465,3 +465,19 @@ class DataSet(Dataset):
             scans_young.append(scan)
 
     return DataSet(self.datasetName, patients=patients_old, scans=scans_old), DataSet(self.datasetName, patients=patients_young, scans=scans_young)
+    
+  def flip_labels(self, probability):
+    flipped_label_indices = {}
+    if(self.label_mode == "intersection"):
+      for idx in range(len(self.scans)):
+        for label_index in range(len(self.label_names)):
+          if(random.random() < probability):
+            if(getattr(self.scans[idx],self.label_names[label_index]) == 1):
+              setattr(self.scans[idx],self.label_names[label_index], 0)
+            else:
+              setattr(self.scans[idx],self.label_names[label_index], 1)
+            if(idx in flipped_label_indices.keys()):
+              flipped_label_indices[idx] += 1
+            else:
+              flipped_label_indices[idx] = 1
+    return flipped_label_indices

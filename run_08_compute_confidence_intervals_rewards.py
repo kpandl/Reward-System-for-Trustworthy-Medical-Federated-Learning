@@ -22,11 +22,20 @@ def mean_and_half_interval_to_text(means, half_intervals):
         result.append(f'{means[i]:.6f}'+' ± '+f'{half_intervals[i]:.6f}')
     return result
 
-for mode in ["Performance", "Bias", "Bias_Age"]:
-    for i, _ in enumerate(final_path_list):
+for mode in ["Performance", "Bias", "Bias_Age", "Performance_Age"]:
+    for i, final_path in enumerate(final_path_list):
 
-        if(mode == "Bias_Age" and final_path_list[i] != "_reduced_maxtranslation_0.1final_as_is"):
+        if(mode == "Performance" and "age" in final_path):
             continue
+        if(mode == "Bias" and "age" in final_path):
+            continue
+        if(mode == "Bias_Age" and (not "age" in final_path and final_path != "_reduced_maxtranslation_0.1final_as_is")):
+            continue
+        if(mode == "Performance_Age" and not "age" in final_path):
+            continue
+
+        #if(mode == "Bias_Age" and final_path != "_reduced_maxtranslation_0.1final_as_is"):
+        #    continue
 
         seed_list = list(range(amounts_of_experiments[i]))
 
@@ -41,6 +50,8 @@ for mode in ["Performance", "Bias", "Bias_Age"]:
                 df = pd.read_csv(os.path.join(os.getcwd(), "results", "default"+str(seed)+final_path_list[i], "Reward_with_coalition.csv"))
             if(mode == "Bias_Age"):
                 df = pd.read_csv(os.path.join(os.getcwd(), "results", "default"+str(seed)+final_path_list[i], "Reward_age_with_coalition.csv"))
+            if(mode == "Performance_Age"):
+                df = pd.read_csv(os.path.join(os.getcwd(), "results", "default"+str(seed)+final_path_list[i], "Reward_performance_age_with_coalition.csv"))
 
             df_list.append(df)
 
@@ -58,6 +69,10 @@ for mode in ["Performance", "Bias", "Bias_Age"]:
             path_means_and_hs = os.path.join(os.getcwd(), "results", "plot_documents"+final_path_list[i], "Profits_age_bias_means_and_hs.csv")
             path_means = os.path.join(os.getcwd(), "results", "plot_documents"+final_path_list[i], "Profits_age_bias_means.csv")
             path_hs = os.path.join(os.getcwd(), "results", "plot_documents"+final_path_list[i], "Profits_age_bias_hs.csv")
+        if(mode == "Performance_Age"):
+            path_means_and_hs = os.path.join(os.getcwd(), "results", "plot_documents"+final_path_list[i], "Profits_performance_means_and_hs.csv")
+            path_means = os.path.join(os.getcwd(), "results", "plot_documents"+final_path_list[i], "Profits_performance_means.csv")
+            path_hs = os.path.join(os.getcwd(), "results", "plot_documents"+final_path_list[i], "Profits_performance_hs.csv")
         
         if os.path.exists(path_means_and_hs):
             os.remove(path_means_and_hs)

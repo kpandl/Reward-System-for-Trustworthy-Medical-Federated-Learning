@@ -23,12 +23,16 @@ import datetime
 from os import listdir
 from os.path import isfile, join
 import shutil
+from densenet import DenseNet121
 
 class FederatedLearningEnvironment:
     
-    def __init__(self, client_list, parent_dir=None, merge_clients=False, weighted_aggregation=False, gender_filter="none", gendersetting=0, train_dataset_size_limit=-1, differentialprivacy=0, ending_condition_mode="local_clients", use_specific_gpu=-1):
+    def __init__(self, client_list, parent_dir=None, merge_clients=False, weighted_aggregation=False, gender_filter="none", gendersetting=0, train_dataset_size_limit=-1, differentialprivacy=0, ending_condition_mode="local_clients", use_specific_gpu=-1, skip_client_deepcopy=False):
 
-        self.client_list = copy.deepcopy(client_list)
+        if(not skip_client_deepcopy):
+            self.client_list = copy.deepcopy(client_list)
+        else:
+            self.client_list = client_list
         if(merge_clients):
             for client in self.client_list[1:]:
                 self.client_list[0].merge_client(client)
@@ -320,7 +324,11 @@ class FederatedLearningEnvironment:
     def test_artificial_model(self, list_of_test_clients):
         path_artificial_model_output = os.path.join(os.getcwd(),"results", self.parent_dir, "constructed_federated_models", self.name + ".pt")
         
-        loaded_state = torch.load(path_artificial_model_output)
+        if(self.use_specific_gpu==-1):
+            loaded_state = torch.load(path_artificial_model_output, map_location='cuda:0')
+        else:
+            loaded_state = torch.load(path_artificial_model_output, map_location='cuda:'+str(self.use_specific_gpu))
+
         print("loading model for test:",path_artificial_model_output)
         self.global_model.load_state_dict(loaded_state["model_state_dict"])
 
@@ -347,3 +355,116 @@ class FederatedLearningEnvironment:
         name = name[:-1]
 
         return name
+
+    def create_deep_features(self):
+        for client in self.client_list:
+            client.create_deep_features()
+        a = 0
+
+    def compute_knn_shapley_values(self):
+        for client in self.client_list:
+            for i in range(8):
+                client.compute_knn_shapley_values(i)
+        a = 0
+
+    def compute_knn_shapley_values_federated(self, filter="none", specific_label_id=-1, noise=False, noise_seed=0, only_even_clients=False, limit_collected_dataset=-1):
+
+        if(noise):
+            np.random.seed(noise_seed)
+
+        if(specific_label_id == -1):
+            list_of_labels = list(range(8))
+        else:
+            list_of_labels = [specific_label_id]
+
+        compute_time = 0
+        total_time = 0
+
+        start_total = time.time()
+        
+        if(limit_collected_dataset != -1 and specific_label_id == -1):
+            list_of_labels = [0]
+
+        for i in list_of_labels:
+            var = 0
+            j = 0
+            
+            for client in self.client_list:
+                X_train_deep, X_test_deep_balanced, y_train_deep, y_test_deep_balanced = client.get_loaded_deep_features(i, filter)
+                a = 0
+
+                if(noise==True):
+                    standard_deviations_X = np.std(X_train_deep, axis=0)
+
+                    #first_values = []
+                    #second_values = []
+                    #for k in range(len(X_train_deep)):
+                    #    first_values.append(X_train_deep[k][0][0][0])
+                    #    second_values.append(X_train_deep[k][0][0][1])
+                
+                    for k in range(len(X_train_deep)):
+                        X_train_deep[k] = X_train_deep[k] + np.random.normal(0, 100*standard_deviations_X)
+
+                if(j==0):
+                    X_train_deep_federated = X_train_deep
+                    y_train_deep_federated = y_train_deep
+                    X_test_deep_federated = X_test_deep_balanced
+                    y_test_deep_federated = y_test_deep_balanced
+                else:
+                    X_train_deep_federated = np.concatenate((X_train_deep_federated, X_train_deep), axis=0)
+                    y_train_deep_federated = np.concatenate((y_train_deep_federated, y_train_deep), axis=0)
+                    if(not only_even_clients or (only_even_clients and j%2==0)):
+                        X_test_deep_federated = np.concatenate((X_test_deep_federated, X_test_deep_balanced), axis=0)
+                        y_test_deep_federated = np.concatenate((y_test_deep_federated, y_test_deep_balanced), axis=0)
+                j += 1
+
+            if(limit_collected_dataset != -1):
+                print("limiting collected dataset to", limit_collected_dataset, "from original", len(X_train_deep_federated))
+                X_train_deep_federated = X_train_deep_federated[:limit_collected_dataset]
+                y_train_deep_federated = y_train_deep_federated[:limit_collected_dataset]
+
+            start_compute = time.time()
+            self.client_list[0].compute_knn_shapley_values_based_on_loaded_deep_features(X_train_deep_federated, X_test_deep_federated, y_train_deep_federated, y_test_deep_federated, i, filter, limit_collected_dataset=limit_collected_dataset)
+            end_compute = time.time()
+            compute_time += end_compute - start_compute
+
+        end_total = time.time()
+        total_time = end_total - start_total
+
+        path_store_time = os.path.join(os.getcwd(), "results", self.parent_dir, self.name, "time_knn_shapley_values_federated.csv")
+        if(not os.path.exists(path_store_time)):
+            with open(path_store_time, 'w') as f:
+                f.write("limit,compute_time,total_time\n")
+        with open(path_store_time, 'a') as f:
+            f.write(str(limit_collected_dataset)+","+str(compute_time)+","+str(total_time)+"\n")
+        
+
+    def compute_local_LR_models(self):
+        #j = 0
+
+        test_dataset_sizes = []
+
+        dict_X_test_deep_balanced = {}
+        dict_y_test_deep_balanced = {}
+        dict_test_dataset_sizes = {}
+            
+        for client in self.client_list:
+            print("loading deep features for client", client.name_addition)
+            _, X_test_deep_balanced, _, y_test_deep_balanced = client.get_loaded_deep_features(0, "all", False)
+            dict_X_test_deep_balanced[client.get_name_of_dataset_train_and_addition()] = X_test_deep_balanced
+            dict_y_test_deep_balanced[client.get_name_of_dataset_train_and_addition()] = y_test_deep_balanced
+            dict_test_dataset_sizes[client.get_name_of_dataset_train_and_addition()] = len(y_test_deep_balanced)
+            #if(j==0):
+            #    X_test_deep_federated = X_test_deep_balanced
+            #    y_test_deep_federated = y_test_deep_balanced
+            #else:
+            #    X_test_deep_federated = np.concatenate((X_test_deep_federated, X_test_deep_balanced), axis=0)
+            #    y_test_deep_federated = np.concatenate((y_test_deep_federated, y_test_deep_balanced), axis=0)
+            #j += 1
+
+        #for i in range(8):            
+        for client in self.client_list:
+            #X_train_deep, _, y_train_deep, _ = client.get_loaded_deep_features(i, filter="none")
+            client.compute_LR_model(dict_X_test_deep_balanced, dict_y_test_deep_balanced, dict_test_dataset_sizes)
+
+            #self.client_list[0].compute_knn_shapley_values_based_on_loaded_deep_features(X_train_deep_federated, X_test_deep_federated, y_train_deep_federated, y_test_deep_federated, i, filter)

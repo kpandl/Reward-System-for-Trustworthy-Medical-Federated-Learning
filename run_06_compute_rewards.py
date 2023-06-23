@@ -9,7 +9,7 @@ from pathlib import Path
 final_path_list = ["_reduced_maxtranslation_0.1final_100_0", "_reduced_maxtranslation_0.1final_50_50", "_reduced_maxtranslation_0.1final_as_is", "_reduced_maxtranslation_0.1final_75_25", "_reduced_maxtranslation_0.1final_age_quantile_100_0", "_reduced_maxtranslation_0.1final_age_quantile_75_25", "_reduced_maxtranslation_0.1final_age_quantile_50_50", "_reduced_maxtranslation_0.1final_age_as_is"]
 amounts_of_experiments = [40, 40, 40, 40, 40, 40, 40, 40]
 
-for mode in ["Performance", "Bias", "Bias_Age"]:
+for mode in ["Performance", "Bias", "Bias_Age", "Performance_Age"]:
     for i, _ in enumerate(final_path_list):
 
         seed = 0
@@ -17,21 +17,27 @@ for mode in ["Performance", "Bias", "Bias_Age"]:
         while True:
             
             if(mode == "Performance"):
-                path = os.path.join(os.getcwd(), "results", "default"+str(seed)+final_path_list[i], "Shapley_performance_with_coalition.csv")
+                path = os.path.join(os.getcwd(), "results", "default"+str(seed)+final_path_list[i], "Shapley_LR_method_predictive_performance_with_coalition.csv")
                 path_reward = os.path.join(os.getcwd(), "results", "default"+str(seed)+final_path_list[i], "Reward_performance_with_coalition.csv")
             if(mode == "Bias"):
-                path = os.path.join(os.getcwd(), "results", "default"+str(seed)+final_path_list[i], "Shapley_with_coalition.csv")
+                path = os.path.join(os.getcwd(), "results", "default"+str(seed)+final_path_list[i], "Shapley_LR_method_bias_gender_with_coalition.csv")
                 path_reward = os.path.join(os.getcwd(), "results", "default"+str(seed)+final_path_list[i], "Reward_with_coalition.csv")
             if(mode == "Bias_Age"):
-                path = os.path.join(os.getcwd(), "results", "default"+str(seed)+final_path_list[i], "Shapley_age_with_coalition.csv")
+                path = os.path.join(os.getcwd(), "results", "default"+str(seed)+final_path_list[i], "Shapley_LR_method_bias_age_with_coalition.csv")
                 path_reward = os.path.join(os.getcwd(), "results", "default"+str(seed)+final_path_list[i], "Reward_age_with_coalition.csv")
+            if(mode == "Performance_Age"):
+                path = os.path.join(os.getcwd(), "results", "default"+str(seed)+final_path_list[i], "Shapley_LR_method_predictive_performance_age_with_coalition.csv")
+                path_reward = os.path.join(os.getcwd(), "results", "default"+str(seed)+final_path_list[i], "Reward_performance_age_with_coalition.csv")
+                if(final_path_list[i] == "_reduced_maxtranslation_0.1final_age_quantile_100_0"):
+                    a = 0
+
 
             if os.path.isfile(path):
                 df = pd.read_csv(os.path.join(path))
 
                 df_profits = pd.DataFrame(columns=['institution', 'reward', 'profit'])
 
-                if(mode == 'Performance'):
+                if(mode == 'Performance' or mode == 'Performance_Age'):
                     coalition_utility = df.iloc[-1]["Shapley value"]
                     reward_pot_distributed = 60 * coalition_utility / 0.5
                     for j in range(6):

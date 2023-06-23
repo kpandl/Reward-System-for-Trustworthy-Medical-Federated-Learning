@@ -29,8 +29,19 @@ from opacus import PrivacyEngine
 from opacus.validators import ModuleValidator
 from os.path import isfile, join
 import globals
+import torchvision.transforms as transforms
+from densenet import DenseNet121
+from torchvision import  models
+from sklearn import datasets, linear_model
+from sklearn import metrics
+import pickle
 
 class Client:
+
+  def get_features(self, name):
+    def hook(model, input, output):
+      self.features[name] = output.detach()
+    return hook
     
   def __init__(self, dataset_train, dataset_val, dataset_test, name_addition="", use_specific_gpu=-1):
     self.dataset_train = dataset_train
@@ -38,6 +49,7 @@ class Client:
     self.dataset_test = dataset_test
     self.name_addition = name_addition
     self.use_specific_gpu=use_specific_gpu
+    self.features = {}
 
     
     self.local_training_completed = False
@@ -272,7 +284,7 @@ class Client:
     self.checkpoint_validate("federated_model_validation", str(self.communication_round_number).zfill(3)+".pt")
       
 
-  def run_testing(self, name_of_aggregation="", load_model=True, ending_condition_mode="local_clients"):
+  def run_testing(self, name_of_aggregation="", load_model=True, ending_condition_mode="local_clients", folderpath_testing_general=None, fle_name=None):
     a = 0
     val_loss_adaptation = 99999
     testing_model_type = "global"
@@ -301,13 +313,17 @@ class Client:
         path = os.path.join(self.parent_dir, "global_"+str(best_epoch_global).zfill(3)+".pt")
         print("ending_condition_mode:", ending_condition_mode, "loading", path)
       
-      loaded_state = torch.load(path)
+      if(self.use_specific_gpu==-1):
+        loaded_state = torch.load(path, map_location='cuda:0')
+      else:
+        loaded_state = torch.load(path, map_location='cuda:'+str(self.use_specific_gpu))
       print("loading model for test:",path)
+
       self.model.load_state_dict(loaded_state["model_state_dict"])
 
-    self.local_test(self.model, testing_model_type=testing_model_type, name_of_aggregation=name_of_aggregation, load_model=load_model)
+    self.local_test(self.model, testing_model_type=testing_model_type, name_of_aggregation=name_of_aggregation, load_model=load_model, folderpath_testing_general=folderpath_testing_general, fle_name=fle_name)
 
-  def local_test(self, model, testing_model_type="", name_of_aggregation="", load_model=True):
+  def local_test(self, model, testing_model_type="", name_of_aggregation="", load_model=True, folderpath_testing_general=None, fle_name=None):
     print("testing", testing_model_type)
     test_loader = torch.utils.data.DataLoader(self.dataset_test,batch_size=self.batch_size, shuffle=False, num_workers=16, pin_memory=True)
 
@@ -353,18 +369,24 @@ class Client:
     if(load_model):
       path_client = os.path.join(self.parent_dir, self.get_name_of_dataset_train() + self.name_addition, "testing.csv")
       path_overall = os.path.join(self.parent_dir, "..", "testing.csv")
+
     else:
       print("self.parent_dir", self.parent_dir)
       print("self.get_name_of_dataset_train()", self.get_name_of_dataset_train())
 
       print("coalition_name", self.parent_coalition_name)
 
-      Path(os.path.join(self.parent_dir, "..", "constructed_federated_models_tests")).mkdir(parents=True, exist_ok=True)
-      path_client = os.path.join(self.parent_dir, "..", "constructed_federated_models_tests", self.parent_coalition_name + "_testing.csv")
-      path_overall = os.path.join(self.parent_dir, "..", "constructed_federated_models_tests", "overall_testing.csv")
+      if(folderpath_testing_general==None):
+        Path(os.path.join(self.parent_dir, "..", "constructed_federated_models_tests")).mkdir(parents=True, exist_ok=True)
+        path_client = os.path.join(self.parent_dir, "..", "constructed_federated_models_tests", self.parent_coalition_name + "_testing.csv")
+        path_overall = os.path.join(self.parent_dir, "..", "constructed_federated_models_tests", "overall_testing.csv")
+      else:
+        path_client = None
+        path_overall = os.path.join(folderpath_testing_general, "overall_testing.csv")
 
     for path in [path_overall, path_client]:
-
+      if(path==None):
+        continue
       file_existed_before = Path(path).is_file()
 
       with open(path, 'a') as logfile:
@@ -374,9 +396,79 @@ class Client:
           logwriter.writerow(["Coalition", "Aggregation type", "Client", "Model type", "Subgroup critereon", "Subgroup name", "Testing criteron", "Operating point", "Test scan count", "Average", "Average without no finding", "atelectasis", "cardiomegaly", "consolidation", "edema", "no_finding", "pleural_effusion", "pneumonia", "pneumothorax"])
 
         for subgroup_test in self.subgroup_test_list:
-          subgroup_test.write_test_analysis(logwriter, self.parent_coalition_name, name_of_aggregation, self.get_name_of_dataset_train(), testing_model_type)
+          if(fle_name==None):
+            subgroup_test.write_test_analysis(logwriter, self.parent_coalition_name, name_of_aggregation, self.get_name_of_dataset_train(), testing_model_type)
+          else:
+             subgroup_test.write_test_analysis(logwriter, fle_name, name_of_aggregation, self.get_name_of_dataset_train(), testing_model_type)
+
 
         print("Finished writing to", path)
+
+
+  def extract_deep_features(self, model, dataset, dataset_name):
+    print("extracting deep features", dataset_name)
+    dataset_loader = torch.utils.data.DataLoader(dataset,batch_size=self.batch_size, shuffle=False, num_workers=16, pin_memory=True)
+
+    model = model.to(self.device)
+
+    PREDS = []
+    #FEATS = []
+    #features = {}
+    
+
+    model.eval()
+
+    #model.denseblock4.register_forward_hook(self.get_features('denseblock4'))
+    model.features.denseblock4.register_forward_hook(self.get_features('denseblock4'))
+
+
+    #out_pred = torch.FloatTensor().to("cpu")  # tensor stores prediction values
+    out_gt = torch.FloatTensor().to("cpu")  # tensor stores groundtruth values
+    out_features = torch.FloatTensor().to("cpu")  # tensor stores prediction values
+
+    #batch_counter = 0
+    with torch.no_grad():
+        for data, target in dataset_loader:
+            data, target = data.to(self.device), target.to(self.device)
+            #output = model(data, "deepfeatures")
+            preds = model(data)
+
+            #PREDS.append(preds.detach().cpu().numpy())
+            #FEATS.append(self.features['denseblock4'].cpu().numpy())
+
+            out_gt = torch.cat((out_gt, target.to("cpu")), 0)
+            #out_pred = torch.cat((out_pred, output.to("cpu")), 0)
+            out_features = torch.cat((out_features, self.features['denseblock4'].cpu()), 0)
+
+            #batch_counter += 1
+
+    genders = []
+    ages = []
+    for i in range(len(dataset)):
+      genders.append(dataset.scans[i].corresponding_patient.gender)
+      ages.append(dataset.scans[i].patient_age)
+
+    path = os.path.join(self.parent_dir, self.get_name_of_dataset_train() + self.name_addition, "deep_features_dataset_"+dataset_name+".npz")
+    np.savez_compressed(path, out_features)
+    print("saved at", path)
+
+    path = os.path.join(self.parent_dir, self.get_name_of_dataset_train() + self.name_addition, "labels_dataset_"+dataset_name+".npz")
+    np.savez_compressed(path, out_gt)
+    print("saved at", path)
+    
+    path = os.path.join(self.parent_dir, self.get_name_of_dataset_train() + self.name_addition, "genders_dataset_"+dataset_name+".npz")
+    np.savez_compressed(path, np.array(genders))
+    print("saved at", path)
+    
+    path = os.path.join(self.parent_dir, self.get_name_of_dataset_train() + self.name_addition, "ages_dataset_"+dataset_name+".npz")
+    np.savez_compressed(path, np.array(ages))
+    print("saved at", path)
+
+
+
+
+
+
     
   def set_model(self, model):
     self.model = copy.deepcopy(model)
@@ -386,6 +478,12 @@ class Client:
     print("path_of_state_dict", path_of_state_dict)
     print("self.parent_coalition_name", self.parent_coalition_name)
     print("self.parent_dir", self.parent_dir)
+    state_dict = torch.load(path_of_state_dict, map_location=torch.device('cpu'))["model_state_dict"]
+    self.model = copy.deepcopy(model_architecture)
+    self.model.load_state_dict(state_dict)
+    
+  def load_local_model_path(self, path_of_state_dict, model_architecture):
+    print("path_of_state_dict", path_of_state_dict)
     state_dict = torch.load(path_of_state_dict, map_location=torch.device('cpu'))["model_state_dict"]
     self.model = copy.deepcopy(model_architecture)
     self.model.load_state_dict(state_dict)
@@ -608,3 +706,316 @@ class Client:
             copyfile(scan.original_scan_path, scan.learning_path)
           if(i%math.floor(len(dataset.scans)/20) == 0):
             print(i, "out of", len(dataset.scans), "chexpert files copied")
+
+  def create_deep_features(self):
+
+    df_global = pd.read_csv(os.path.join(self.parent_dir, "federated_training.csv"))
+    best_epoch_global = df_global["communication round"][df_global["average val loss"].idxmin()]
+
+    path = os.path.join(self.parent_dir, "global_"+str(best_epoch_global).zfill(3)+".pt")
+
+
+    #path = os.path.join(self.parent_dir, "global_" + str(round_number).zfill(3) + ".pt")
+    #model = DenseNet121()
+    model = models.densenet121(pretrained=True)
+    num_ftrs = model.classifier.in_features
+    model.classifier = nn.Sequential(nn.Linear(num_ftrs, 8), nn.Sigmoid())
+
+    loaded_model_state_dict = torch.load(path, map_location=torch.device('cpu'))["model_state_dict"]
+    model.load_state_dict(loaded_model_state_dict)
+
+    #list_trained = list(loaded_model_state_dict.keys())
+    #list_new = list(model.state_dict().keys())
+
+    self.dataset_train.set_transform(transform=transforms.Compose([transforms.Resize((256,256)), transforms.CenterCrop(256), transforms.ToTensor(),transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]))
+    self.extract_deep_features(model, self.dataset_train, "train")
+    
+    self.dataset_test.set_transform(transform=transforms.Compose([transforms.Resize((256,256)), transforms.CenterCrop(256), transforms.ToTensor(),transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]))
+    self.extract_deep_features(model, self.dataset_test, "test")
+
+    a = 0
+
+  def compute_knn_shapley_values(self, index_condition=0, filter="none"):
+    
+    X_train_deep, X_test_deep_balanced, y_train_deep, y_test_deep_balanced = self.get_loaded_deep_features(index_condition, filter)
+
+    k=3
+
+    deep_knn_values, scores_mean, *_ = self.original_knn_shapley(k, X_train_deep, X_test_deep_balanced[0:600], y_train_deep, y_test_deep_balanced[0:600], index_condition)
+    
+    path = os.path.join(self.parent_dir, self.get_name_of_dataset_train() + self.name_addition, "deep_knn_values_balanced_label_"+str(index_condition)+".npz")
+    np.savez_compressed(path, knn=deep_knn_values)
+    print("saved at", path)
+
+    print("sum", sum(deep_knn_values))
+    print("scores_mean", scores_mean)
+    print("finished obtaining balanced knn shapley values")
+    
+    compute_unbalanced = False
+
+    if(compute_unbalanced):
+      deep_knn_values, scores_mean, *_ = self.original_knn_shapley(k, X_train_deep, X_test_deep[0:600], y_train_deep, y_test_deep[0:600], index_condition)
+      
+      path = os.path.join(self.parent_dir, self.get_name_of_dataset_train() + self.name_addition, "deep_knn_values_unbalanced"+".npz")
+      np.savez_compressed(path, knn=deep_knn_values)
+
+      print("sum", sum(deep_knn_values))
+      print("scores_mean", scores_mean)
+      print("finished obtaining unbalanced knn shapley values")
+
+    a = 0
+
+  def delete_deep_feature_arrays(self):
+    path_train_deep = os.path.join(self.parent_dir, self.get_name_of_dataset_train() + self.name_addition, "deep_features_dataset_train.npz")
+    print("deleting", path_train_deep)
+    os.remove(path_train_deep)
+
+    path_test_deep = os.path.join(self.parent_dir, self.get_name_of_dataset_train() + self.name_addition, "deep_features_dataset_test.npz")
+    print("deleting", path_test_deep)
+    os.remove(path_test_deep)
+
+  def compute_knn_shapley_values_based_on_loaded_deep_features(self, X_train_deep, X_test_deep_balanced, y_train_deep, y_test_deep_balanced, index_condition=0, filter="none", limit_collected_dataset=-1):
+    
+    k=3
+
+    deep_knn_values, scores_mean, *_ = self.original_knn_shapley(k, X_train_deep, X_test_deep_balanced, y_train_deep, y_test_deep_balanced, index_condition)
+    
+    filter_addition = ""
+    if(filter != "none"):
+      filter_addition = filter + "_"
+
+    name_addition = ""
+    if(limit_collected_dataset != -1):
+      name_addition = "_limit_" + str(limit_collected_dataset)
+
+    path = os.path.join(self.parent_dir, self.get_name_of_dataset_train() + self.name_addition, "deep_knn_values_balanced_federated_" + filter_addition + "label_"+str(index_condition)+name_addition+".npz")
+    np.savez_compressed(path, knn=deep_knn_values)
+    print("saved at", path)
+
+    print("sum", sum(deep_knn_values))
+    print("scores_mean", scores_mean)
+    print("finished obtaining balanced knn shapley values")
+
+    a = 0
+
+  def get_loaded_deep_features(self, index_condition=0, filter="none", load_train=True):
+    
+    path = os.path.join(self.parent_dir, self.get_name_of_dataset_train() + self.name_addition, "deep_features_dataset_"+"train"+".npz")
+    if(load_train):
+      with open(path, "rb") as f:
+        X_train_deep = np.load(f)["arr_0"]#[:40000]
+    else:
+      X_train_deep = np.zeros((1,1))
+
+
+    path = os.path.join(self.parent_dir, self.get_name_of_dataset_train() + self.name_addition, "labels_dataset_"+"train"+".npz")
+    if(load_train):
+      with open(path, "rb") as f:
+        y_train_deep = np.load(f)["arr_0"]#[:40000]
+    else:
+      y_train_deep = np.zeros((1,1))
+      
+    path = os.path.join(self.parent_dir, self.get_name_of_dataset_train() + self.name_addition, "deep_features_dataset_"+"test"+".npz")
+    with open(path, "rb") as f:
+      X_test_deep = np.load(f)["arr_0"]#[:40000]
+
+    path = os.path.join(self.parent_dir, self.get_name_of_dataset_train() + self.name_addition, "labels_dataset_"+"test"+".npz")
+    with open(path, "rb") as f:
+      y_test_deep = np.load(f)["arr_0"]#[:40000]
+
+    path = os.path.join(self.parent_dir, self.get_name_of_dataset_train() + self.name_addition, "genders_dataset_"+"test"+".npz")
+    with open(path, "rb") as f:
+      genders_test = np.load(f, allow_pickle=True)["arr_0"]
+
+    if(filter=="none"):
+      
+      X_test_deep_0=[]
+      X_test_deep_1=[]
+      y_test_deep_0=[]
+      y_test_deep_1=[]
+
+      for i in range(len(y_test_deep)):
+        label=y_test_deep[i][index_condition]
+        if(label==0.0):
+          X_test_deep_0.append(X_test_deep[i])
+          y_test_deep_0.append(y_test_deep[i])
+        if(label==1.0):
+          X_test_deep_1.append(X_test_deep[i])
+          y_test_deep_1.append(y_test_deep[i])
+      
+      X_test_deep_balanced = np.array(X_test_deep_0[0:300] + X_test_deep_1[0:300])
+      y_test_deep_balanced = np.array(y_test_deep_0[0:300] + y_test_deep_1[0:300])
+    
+    if(filter=="male" or filter =="female"):
+      
+      X_test_deep_0_male=[]
+      X_test_deep_0_female=[]
+      X_test_deep_1_male=[]
+      X_test_deep_1_female=[]
+
+      y_test_deep_0_male=[]
+      y_test_deep_0_female=[]
+      y_test_deep_1_male=[]
+      y_test_deep_1_female=[]
+
+      for i in range(len(y_test_deep)):
+        label=y_test_deep[i][index_condition]
+        if(label==0.0 and genders_test[i]=="M"):
+          X_test_deep_0_male.append(X_test_deep[i])
+          y_test_deep_0_male.append(y_test_deep[i])
+        if(label==0.0 and genders_test[i]=="F"):
+          X_test_deep_0_female.append(X_test_deep[i])
+          y_test_deep_0_female.append(y_test_deep[i])
+        if(label==1.0 and genders_test[i]=="M"):
+          X_test_deep_1_male.append(X_test_deep[i])
+          y_test_deep_1_male.append(y_test_deep[i])
+        if(label==1.0 and genders_test[i]=="F"):
+          X_test_deep_1_female.append(X_test_deep[i])
+          y_test_deep_1_female.append(y_test_deep[i])
+      
+        if(filter == "male"):
+          X_test_deep_balanced = np.array(X_test_deep_0_male[0:150] + X_test_deep_1_male[0:150])
+          y_test_deep_balanced = np.array(y_test_deep_0_male[0:150] + y_test_deep_1_male[0:150])
+        if(filter == "female"):
+          X_test_deep_balanced = np.array(X_test_deep_0_female[0:150] + X_test_deep_1_female[0:150])
+          y_test_deep_balanced = np.array(y_test_deep_0_female[0:150] + y_test_deep_1_female[0:150])
+    
+    if(filter=="all"):
+      X_test_deep_balanced = X_test_deep
+      y_test_deep_balanced = y_test_deep
+
+    return X_train_deep, X_test_deep_balanced, y_train_deep, y_test_deep_balanced
+
+  def original_knn_shapley(self, K, trainX, valX, trainy, valy, index_condition=0):
+      #valy_of_position_is_1 = []
+      score_original = []
+      """calculates KNN-Shapley values
+
+                  # Arguments
+                          K: number of nearest neighbors
+                          trainX: deep features of train images
+                          valX: deep features of test images
+                          trainy: deep features of train labels
+                          valy: deep features of test labels
+
+                  # Returns
+                          KNN values"""
+
+      N = trainX.shape[0]
+      M = valX.shape[0]
+      c = 1
+      value = np.zeros(N)
+      #     value = [[] for i in range(N) ]
+      scores = []
+      false_result_idxs = []
+      for i in range(M):
+          #if(valy[i][index_condition] == 1):
+          #    valy_of_position_is_1.append(i)
+          print("Step", i, "from", M)
+          X = valX[i]
+          y = valy[i]
+
+          s = np.zeros(N)
+          diff = (trainX - X).reshape(N, -1)  # calculate the distances between valX and every trainX data point
+
+          dist = np.einsum('ij, ij->i', diff, diff)  # output the sum distance
+          idx = np.argsort(dist)  # ascend the distance
+          ans = trainy[idx]
+
+          # calculate test performance
+          score = 0.0
+
+          for j in range(min(K, N)):
+              score += float(ans[j][index_condition] == y[index_condition])
+          score_original.append(score/K)
+          if (score > min(K, N) / 2):
+              scores.append(1)
+          else:
+              scores.append(0)
+              false_result_idxs.append(i)
+
+          s[idx[N - 1]] = float(ans[N - 1][index_condition] == y[index_condition]) * c / N
+          cur = N - 2
+          for j in range(N - 1):
+              s[idx[cur]] = s[idx[cur + 1]] + float(int(ans[cur][index_condition] == y[index_condition]) - int(ans[cur + 1][index_condition] == y[index_condition])) * c / K * (
+                          min(cur + 1, K) / (cur + 1))
+              cur -= 1
+
+          for j in range(N):
+              value[j] += s[j]
+
+      for i in range(N):
+          value[i] /= M
+
+      return value, np.mean(score_original), false_result_idxs
+
+      
+
+  def compute_LR_model(self, dict_X_test_deep_balanced, dict_y_test_deep_balanced, dict_test_dataset_sizes):
+    
+    #i = 0
+    #X_test_deep_balanced = None
+    #y_test_deep_balanced = None
+
+    #for key in dict_X_test_deep_balanced.keys():
+    #  if(i==0):
+    #    X_test_deep_balanced = dict_X_test_deep_balanced[key]
+    #    y_test_deep_balanced = dict_y_test_deep_balanced[key]
+    #  else:
+    #    X_test_deep_balanced = np.concatenate((X_test_deep_balanced, dict_X_test_deep_balanced[key]), axis=0)
+    #    y_test_deep_balanced = np.concatenate((y_test_deep_balanced, dict_y_test_deep_balanced[key]), axis=0)
+    #  i+=1
+    print("loading data")
+
+    X_train_deep, _, y_train_deep, _ = self.get_loaded_deep_features(0, "all")
+    regr = linear_model.LinearRegression()
+
+    print("reshaping data 1")
+    res = X_train_deep
+    res2 = np.reshape(res, (len(X_train_deep), 65536))
+    
+    print("fitting model")
+    regr.fit(res2, y_train_deep)
+    path = os.path.join(self.parent_dir, self.get_name_of_dataset_train() + self.name_addition, "LR_model"+".pkl")
+    with open(path, 'wb') as file:
+      pickle.dump(regr, file)
+
+    print("predicting")
+    train_predictions = regr.predict(res2)
+    print("calculating train metrics")
+    st = SubgroupTest(None, None, None)
+    aucs_train_prediction = st.compute_roc_auc_for_subgroup_and_conditions(list(range(len(train_predictions))), torch.from_numpy(y_train_deep), torch.from_numpy(train_predictions))
+    print("AUCs train prediction", aucs_train_prediction)
+    print("Average train", np.mean(aucs_train_prediction))
+    print("Num of train predictions", len(train_predictions))
+
+    dict_test_predictions = {}
+    
+    for key in dict_X_test_deep_balanced.keys():
+      print("reshaping data 2, key", key)
+      res = dict_X_test_deep_balanced[key]
+      res2 = np.reshape(res, (len(res), 65536))
+      print("predicting")
+      test_predictions = regr.predict(res2)
+      aucs_test_prediction = st.compute_roc_auc_for_subgroup_and_conditions(list(range(len(test_predictions))), torch.from_numpy(dict_y_test_deep_balanced[key]), torch.from_numpy(test_predictions))
+      dict_test_predictions[key] = test_predictions
+      print("AUCs test prediction", aucs_test_prediction)
+      print("Average test", np.mean(aucs_test_prediction))
+      print("Num of test points", len(test_predictions))
+
+    path = os.path.join(self.parent_dir, self.get_name_of_dataset_train() + self.name_addition, "LR_model_test_results"+".pkl")
+    #np.savez_compressed(path, test_predictions)
+    with open(path, 'wb') as file:
+      pickle.dump(dict_test_predictions, file)
+    
+    path = os.path.join(self.parent_dir, self.get_name_of_dataset_train() + self.name_addition, "LR_model_test_results_corresponding_labels"+".pkl")
+    #np.savez_compressed(path, y_test_deep_balanced)
+    with open(path, 'wb') as file:
+      pickle.dump(dict_y_test_deep_balanced, file)
+
+    path = os.path.join(self.parent_dir, self.get_name_of_dataset_train() + self.name_addition, "client_test_dataset_sizes"+".pkl")
+    with open(path, 'wb') as file:
+      pickle.dump(dict_test_dataset_sizes, file)
+
+  def flip_labels(self, probability):
+    return self.dataset_train.flip_labels(probability)

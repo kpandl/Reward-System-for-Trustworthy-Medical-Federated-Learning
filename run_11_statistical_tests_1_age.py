@@ -27,8 +27,8 @@ for path_1 in other_path_list:
         SVs_path1 = []
         SVs_other = []
         for i in range(amount_of_experiments):
-            df_1 = pd.read_csv(os.path.join(os.getcwd(), "results", "default"+str(i)+path_1, "Shapley_performance_with_coalition.csv"))
-            df_other = pd.read_csv(os.path.join(os.getcwd(), "results", "default"+str(i)+other_path, "Shapley_performance_with_coalition.csv"))
+            df_1 = pd.read_csv(os.path.join(os.getcwd(), "results", "default"+str(i)+path_1, "Shapley_LR_method_predictive_performance_age_with_coalition.csv"))
+            df_other = pd.read_csv(os.path.join(os.getcwd(), "results", "default"+str(i)+other_path, "Shapley_LR_method_predictive_performance_age_with_coalition.csv"))
 
             SVs_path1.append(df_1.iloc[-1]["Shapley value"])
             SVs_other.append(df_other.iloc[-1]["Shapley value"])
